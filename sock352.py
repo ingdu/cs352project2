@@ -301,12 +301,10 @@ class socket:
             curr += 1
         print("Segment of %d bytes was sent" % bytessent)
         return bytessent
-        return
 
     def recv(self, nbytes):
         # your code goes here
-         global sock, data, curr
-
+        global sock, data, curr
         data = ""
         bytesreceived  = ""
         while(nbytes > 0):
