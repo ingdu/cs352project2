@@ -1,22 +1,57 @@
+
+# CS 352 project part 2
+# this is the initial socket library for project 2
+# You wil need to fill in the various methods in this
+# library
+
+# main libraries
 import binascii
 import socket as syssock
 import struct
 import sys
-import random
-import math
+
+# encryption libraries
 import nacl.utils
 import nacl.secret
 import nacl.utils
 from nacl.public import PrivateKey, Box
 
+# if you want to debug and print the current stack frame
+from inspect import currentframe, getframeinfo
 
+# these are globals to the sock352 class and
+# define the UDP ports all messages are sent
+# and received from
+
+# the ports to use for the sock352 messages
+global sock352portTx
+global sock352portRx
+# the public and private keychains in hex format
+global publicKeysHex
+global privateKeysHex
+
+# the public and private keychains in binary format
+global publicKeys
+global privateKeys
+
+# the encryption flag
+global ENCRYPT
+
+publicKeysHex = {}
+privateKeysHex = {}
+publicKeys = {}
+privateKeys = {}
+
+# this is 0xEC
+ENCRYPT = 236
+
+# this is the structure of the sock352 packet
 port = -1
 recv = -1
 sock = (0, 0)
 address = ''
 curr = 0
-sock352PktHdrData = '!BBBBHHLLQQLL'
-
+sock352HdrStructStr = '!BBBBHHLLQQLL'
 
 version = 0x1
 # flags
@@ -37,39 +72,13 @@ ack_no = 0x0
 window = 0x0
 data = ''
 
-#project 2 stuff
-global publicKeysHex
-global privateKeysHex
 
-global PKeys
-global privateKeys
+def init(UDPportTx, UDPportRx):
+    global sock352portTx
+    global sock352portRx
 
-global ENCRYPT
-
-publicKeysHex = {} 
-privateKeysHex = {} 
-PKeys = {} 
-privateKeys = {}
-
-ENCRYPT = 236 
-
-global communication_box
-global secretKey
-global otherKey
-global defaultSecretKey
-global defaultKey
-
-secretKey = -1
-otherKey = -1
-defaultSecretKey = -1
-defaultKey = -1
-
-
-# this init function is global to the class and
-# defines the UDP ports all messages are sent
-# and received from.
-def init(UDPportTx, UDPportRx):     # initialize your UDP socket here
-    global sock, port, recv
+    # create the sockets to send and receive UDP packets on
+    # if the ports are not equal, create two sockets, one for Tx and one for Rx
     print("Waiting for client connection")
     # create the socket
     sock = syssock.socket(syssock.AF_INET, syssock.SOCK_DGRAM)
@@ -86,57 +95,67 @@ def init(UDPportTx, UDPportRx):     # initialize your UDP socket here
     sock.settimeout(.2)
     return
 
-#project 2 stuff
+
+# read the keyfile. The result should be a private key and a keychain of
+# public keys
 def readKeyChain(filename):
-    global publicKeysHex, privateKeysHex, PKeys, privateKeys
-    global defaultSecretKey, defaultKey
+    global publicKeysHex
+    global privateKeysHex
+    global publicKeys
+    global privateKeys
 
     if (filename):
         try:
             keyfile_fd = open(filename, "r")
             for line in keyfile_fd:
                 words = line.split()
+                # check if a comment
+                # more than 2 words, and the first word does not have a
+                # hash, we may have a valid host/key pair in the keychain
                 if ((len(words) >= 4) and (words[0].find("#") == -1)):
                     host = words[1]
-                    if(host == 'localhost'):
-                        host = '127.0.0.1'
                     port = words[2]
                     keyInHex = words[3]
                     if (words[0] == "private"):
                         privateKeysHex[(host, port)] = keyInHex
                         privateKeys[(host, port)] = nacl.public.PrivateKey(
                             keyInHex, nacl.encoding.HexEncoder)
-                        if(host == '*' and port == '*'):
-                            defaultSecretKey = privateKeys[(host, port)]
                     elif (words[0] == "public"):
                         publicKeysHex[(host, port)] = keyInHex
-                        PKeys[(host, port)] = nacl.public.PublicKey(
+                        publicKeys[(host, port)] = nacl.public.PublicKey(
                             keyInHex, nacl.encoding.HexEncoder)
-                        if(host == '*' and port == '*'):
-                            defaultKey = PKeys[(host, port)]
         except Exception, e:
             print("error: opening keychain file: %s %s" % (filename, repr(e)))
     else:
         print("error: No filename presented")
-    return (PKeys, privateKeys)
+
+    return (publicKeys, privateKeys)
 
 
 class socket:
 
-    def __init__(self):     # fill in your code here
-        # nothing needed here
+    def __init__(self):
+        # your code goes here
         return
 
     def bind(self, address):
-        # not used for part of project
-        pass
+        # bind is not used in this assignment
         return
 
-    def connect(self, address):     # fill in your code here
+    def connect(self, *args):
+
+        # example code to parse an argument list
+        global sock352portTx
+        global ENCRYPT
+        if (len(args) >= 1):
+            (host, port) = args[0]
+        if (len(args) >= 2):
+            if (args[1] == ENCRYPT):
+                self.encrypt = True
+
+        # your code goes here
         global sock, curr, sock352PktHdrData, header_len, version, opt_ptr, protocol, checksum, \
             source_port, dest_port, window
-        global ENCRYPT, PKeys, defaultKey, otherKey, secretKey, defaultSecretKey
-
 
         # current sequence number set to a random int
         curr = random.randint(10, 100)
@@ -170,11 +189,17 @@ class socket:
         return
 
     def listen(self, backlog):
+        # listen is not used in this assignments
         pass
         return
 
-    def accept(self):
-        global sock, recv, curr
+    def accept(self, *args):
+        # example code to parse an argument list
+        global ENCRYPT, sock, recv, curr
+        if (len(args) >= 1):
+            if (args[0] == ENCRYPT):
+                self.encryption = True
+        # your code goes here
         flag = -1
         newHeader = ""
 
@@ -205,8 +230,8 @@ class socket:
        # (clientsocket, address) = (1,1)     # change this to your code
         return (clientsocket, address)
 
-    def close(self):    # fill in your code here
-
+    def close(self):
+        # your code goes here
         # create temporary sequence number
         temp = random.randint(10, 100)
 
@@ -238,6 +263,7 @@ class socket:
         return
 
     def send(self, buffer):
+        # your code goes here
         global sock, header_len, curr
 
         bytessent = 0       # fill in your code here
@@ -257,8 +283,8 @@ class socket:
             payload_len = len(message)
 
             pHeader = header1.pack(version, flags, opt_ptr, protocol,
-                                   header_len, checksum, source_port, dest_port, sequence_no,
-                                   ack_no, window, payload_len)
+                                  header_len, checksum, source_port, dest_port, sequence_no,
+                                  ack_no, window, payload_len)
             ######################
             temp = 0
             ACKFlag = -1
@@ -275,12 +301,14 @@ class socket:
             curr += 1
         print("Segment of %d bytes was sent" % bytessent)
         return bytessent
+        return
 
     def recv(self, nbytes):
-        global sock, data, curr
+        # your code goes here
+         global sock, data, curr
 
         data = ""
-        bytesreceived = ""
+        bytesreceived  = ""
         while(nbytes > 0):
             seq_no = -1
             # Keep checking the incoming packets until we get
@@ -288,7 +316,7 @@ class socket:
             while(seq_no != curr):
                 newHeader = self.packet()
                 seq_no = newHeader[8]
-
+            
                 ###############
                 # create new header
                 header1 = struct.Struct(sock352PktHdrData)
@@ -303,13 +331,13 @@ class socket:
                                       ack_no, window, payload_len)
                 ###############
                 sock.sendto(header, address)
-            bytesreceived += data
+            bytesreceived  += data
             nbytes -= len(data)
-
+            
             curr += 1
         print("Finished receiving the specified amount.")
-        return bytesreceived
-
+        return bytesreceived 
+     
     # Packet class
     def packet(self):
         global sock, sock352PktHdrData, address, data
@@ -321,7 +349,7 @@ class socket:
             head = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             return head
 
-        # unpacks the
+        # unpacks the 
         (data, message) = (data[:40], data[40:])
         header = struct.unpack(sock352PktHdrData, data)
         flag = header[1]
@@ -341,8 +369,8 @@ class socket:
             payload_len = 0
 
             terminalHeader = header1.pack(version, flags, opt_ptr, protocol,
-                                          header_len, checksum, source_port, dest_port, sequence_no,
-                                          ack_no, window, payload_len)
+                                  header_len, checksum, source_port, dest_port, sequence_no,
+                                  ack_no, window, payload_len)
             ###############
             sock.sendto(terminalHeader, dest)
             return header
