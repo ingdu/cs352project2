@@ -72,6 +72,18 @@ ack_no = 0x0
 window = 0x0
 data = ''
 
+# new stuff
+global communication_box
+global my_secret_key
+global other_host_public_key
+global default_secret_key
+global default_public_key
+
+my_secret_key = -1
+other_host_public_key = -1
+default_secret_key = -1
+default_public_key = -1
+
 
 def init(UDPportTx, UDPportRx):
     global sock352portTx
@@ -155,7 +167,8 @@ class socket:
 
         # your code goes here
         global sock, curr, sock352PktHdrData, header_len, version, opt_ptr, protocol, checksum, \
-            source_port, dest_port, window
+            source_port, dest_port, window, communication_box, recv
+        global publicKeys, default_public_key, other_host_public_key, my_secret_key, default_secret_key
 
         # current sequence number set to a random int
         curr = random.randint(10, 100)
@@ -185,6 +198,40 @@ class socket:
         sock.connect((address[0], port))
 
         curr += 1
+
+        # Set up everything we need for encryption, if needed
+        self.encrypt = False
+        if (len(args) >= 2):
+            if (args[1] == ENCRYPT):
+                self.encrypt = True
+                if(address[0] == 'localhost'):
+                    address = ('127.0.0.1', str(receiver))
+                for private_address in privateKeys:
+                    if(private_address == (address[0], str(receiver))):
+                        my_secret_key = privateKeys[private_address]
+                        break
+                if(my_secret_key == -1):
+                    my_secret_key = default_secret_key
+                if(my_secret_key == -1):
+                    print("\tERROR. NO PRIVATE KEY FOUND FOR THIS HOST. TERMINATING.")
+                    return
+
+                for public_address in publicKeys:
+                    #print("\t We are checking %s against %s for a public key." % ((address[0], transmitter), public_address))
+                    if(public_address == (address[0], str(transmitter))):
+                        other_host_public_key = publicKeys[public_address]
+                        break
+                if(other_host_public_key == -1):
+                    other_host_public_key = default_public_key
+                if(other_host_public_key == -1):
+                    print(
+                        "\tERROR. NO PUBLIC KEY FOUND FOR THE OTHER HOST. TERMINATING.")
+                    return
+                #print('\tThis is my secret key | their private key:\t %s | %s' % (my_secret_key, other_host_public_key))
+                communication_box = Box(my_secret_key, other_host_public_key)
+            else:
+                print("\tInvalid encryption flag! Self-destructing now . . .")
+                return
         print("Connection achieved")
         return
 
@@ -195,7 +242,9 @@ class socket:
 
     def accept(self, *args):
         # example code to parse an argument list
-        global ENCRYPT, sock, recv, curr
+        global ENCRYPT, sock, recv, curr, communication_box, recv
+        global publicKeys, default_public_key, other_host_public_key, my_secret_key, default_secret_key
+        
         if (len(args) >= 1):
             if (args[0] == ENCRYPT):
                 self.encryption = True
@@ -223,7 +272,37 @@ class socket:
                               ack_no, window, payload_len)
         ##################
         sock.sendto(header + " accepted", address)
-
+        # Establish the encryption keys and box, if asked for
+        self.encryption = False
+        if (len(args) >= 1):
+            if (args[0] == ENCRYPT):
+                self.encryption = True
+                tempOtherHost = (otherHostAddress[0], str(otherHostAddress[1]))
+                for private_address in privateKeys:
+                    if(private_address == ('127.0.0.1', str(receiver))):
+                        my_secret_key = privateKeys[private_address]
+                        break
+                if(my_secret_key == -1):
+                    my_secret_key = default_secret_key
+                if(my_secret_key == -1):
+                    print("\tERROR. NO PRIVATE KEY FOUND FOR THIS HOST. TERMINATING.")
+                    return (0, 0)
+                for public_address in publicKeys:
+                    #print("\t We are checking %s against %s for a public key." % (tempOtherHost, public_address))
+                    if(public_address == tempOtherHost):
+                        other_host_public_key = publicKeys[public_address]
+                        break
+                if(other_host_public_key == -1):
+                    other_host_public_key = default_public_key
+                if(other_host_public_key == -1):
+                    print(
+                        "\tERROR. NO PUBLIC KEY FOUND FOR THE OTHER HOST. TERMINATING.")
+                    return (0, 0)
+                #print('\tThis is my secret key | their private key:\t %s | %s' % (my_secret_key, other_host_public_key))
+                communication_box = Box(my_secret_key, other_host_public_key)
+            else:
+                print("\tInvalid encryption flag! Self-destructing now . . .")
+                return
         curr += 1
         print("Target acquired")
         clientsocket = socket()
@@ -283,8 +362,8 @@ class socket:
             payload_len = len(message)
 
             pHeader = header1.pack(version, flags, opt_ptr, protocol,
-                                  header_len, checksum, source_port, dest_port, sequence_no,
-                                  ack_no, window, payload_len)
+                                   header_len, checksum, source_port, dest_port, sequence_no,
+                                   ack_no, window, payload_len)
             ######################
             temp = 0
             ACKFlag = -1
@@ -306,7 +385,7 @@ class socket:
         # your code goes here
         global sock, data, curr
         data = ""
-        bytesreceived  = ""
+        bytesreceived = ""
         while(nbytes > 0):
             seq_no = -1
             # Keep checking the incoming packets until we get
@@ -314,7 +393,7 @@ class socket:
             while(seq_no != curr):
                 newHeader = self.packet()
                 seq_no = newHeader[8]
-            
+
                 ###############
                 # create new header
                 header1 = struct.Struct(sock352PktHdrData)
@@ -329,13 +408,15 @@ class socket:
                                       ack_no, window, payload_len)
                 ###############
                 sock.sendto(header, address)
-            bytesreceived  += data
+            if(newHeader[2] == 0x1):
+                deliveredData = communication_box.decrypt(deliveredData)
+            bytesreceived += data
             nbytes -= len(data)
-            
+
             curr += 1
         print("Finished receiving the specified amount.")
-        return bytesreceived 
-     
+        return bytesreceived
+
     # Packet class
     def packet(self):
         global sock, sock352PktHdrData, address, data
@@ -347,7 +428,7 @@ class socket:
             head = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             return head
 
-        # unpacks the 
+        # unpacks the
         (data, message) = (data[:40], data[40:])
         header = struct.unpack(sock352PktHdrData, data)
         flag = header[1]
@@ -367,8 +448,8 @@ class socket:
             payload_len = 0
 
             terminalHeader = header1.pack(version, flags, opt_ptr, protocol,
-                                  header_len, checksum, source_port, dest_port, sequence_no,
-                                  ack_no, window, payload_len)
+                                          header_len, checksum, source_port, dest_port, sequence_no,
+                                          ack_no, window, payload_len)
             ###############
             sock.sendto(terminalHeader, dest)
             return header
