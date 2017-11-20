@@ -381,24 +381,43 @@ class socket:
     # Packet class
     def packet(self):
         global sock, sock352PktHdrData, address, data
-        # attempts to recv packet if not will print error message
-        try:
-            (data, dest) = sock.recvfrom(4096)
-        except syssock.timeout:
-            print("No packets received, timeout window maxed")
-            head = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-            return head
 
-        # unpacks the
-        (data, message) = (data[:40], data[40:])
-        header = struct.unpack(sock352PktHdrData, data)
+        # Wait 0.2 seconds to receive a packet, otherwise return an empty header
+        try:
+            (data, senderAddress) = sock.recvfrom(4096)
+        except syssock.timeout:
+            print("\t\tNo packets received before the timeout!")
+            z = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            return z
+
+        # Randomly pretend this packet got dropped or corrupted
+        """
+        if(random.randint(1,3) == 2):
+            print("\t\tIncoming packet got dropped! Timeout.")
+            #z = self.__make_header(0x0,1,1,1,1)
+            #print("\t\tAssembled this header: ")
+            #print(z)
+            z = [0,0,0,0,0,0,0,0,0,0,0,0]
+            return z
+        """
+        # Separate the header and the message
+        (data_header, data_msg) = (data[:header_len], data[header_len:])
+        header = struct.unpack(sock352PktHdrData, data_header)
         flag = header[1]
 
-        # checks serveral flag conditions as listed in the specs
+        # Python lacks a switch statement!
+        # Elif isn't so ugly...but still!
+
+        #   First check if it's a connection set up (SYN bit set in flags)
+        #    If so, save the address of the sender so the calling function
+        #    can make use of it
         if (flag == SOCK352_SYN):
-            address = dest
+            otherHostAddress = senderAddress
             return header
+        # if it is a connection tear down (FIN)
+        #   send a FIN packet
         elif (flag == SOCK352_FIN):
+            #terminalHeader = self.__make_header(0x0, 0x04, 0, header[8], 0)
             ###############
             # create header
             header1 = struct.Struct(sock352PktHdrData)
@@ -407,25 +426,29 @@ class socket:
             sequence_no = 0
             ack_no = header[8]
             payload_len = 0
-            opt_ptr = 0x0
-            terminalHeader = header1.pack(version, flags, opt_ptr, protocol,
+
+            terminalHeader = header1.pack(version, flags, 0x0, protocol,
                                           header_len, checksum, source_port, dest_port, sequence_no,
                                           ack_no, window, payload_len)
             ###############
-            sock.sendto(terminalHeader, dest)
+            sock.sendto(terminalHeader, senderAddress)
             return header
-
+        # else if it is a data packet
+        #      save the message in a global variable so the calling
+        #       function can make use of it
         elif (flag == SOCK352_FLAG):
-            data = message
+            deliveredData = data_msg
             return header
+        # else if it is an ACK packet, let the calling function know
         elif (flag == SOCK352_ACK):
             return header
-
+        # If we get a reset packet, ignore it. The calling function should
+        #   handle the resend
         elif (flag == SOCK352_RESET):
             return header
-
+        # else if it's nothing it's a malformed packet.
+        #   send a reset (RST) packet with the sequence number
         else:
-
             #####################
             # create header
             header1 = struct.Struct(sock352PktHdrData)
@@ -434,13 +457,14 @@ class socket:
             sequence_no = header[8]
             ack_no = header[9]
             payload_len = 0
-            opt_ptr = 0x0
-            header = header1.pack(version, flags, opt_ptr, protocol,
+
+            header = header1.pack(version, flags, 0x0, protocol,
                                   header_len, checksum, source_port, dest_port, sequence_no,
                                   ack_no, window, payload_len)
             #####################
-            if (sock.sendto(header, dest) > 0):
-                print("Reset packet sent")
+            header = self.__make_header(0x0, 0x08, header[8], header[9], 0)
+            if (sock.sendto(header, senderAddress) > 0):
+                print("\t\tSent a reset packet!")
             else:
-                print("Reset packet failed to send")
+                print("\t\tFailed to send a reset packet!")
             return header
