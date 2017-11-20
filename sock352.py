@@ -39,7 +39,6 @@ dest_port = 0x0
 window = 0x0
 header_len = 40
 data = ""
-
 # these are globals to the sock352 class and
 # define the UDP ports all messages are sent
 # and received from
@@ -297,12 +296,12 @@ class socket:
     def send(self,buffer):
         # your code goes here 
         global sock, header_len, curr, box
-        
+        opt_ptr = 0x0
         bytesSent = 0
         msglen = len(buffer)
         while(msglen > 0):
             parcel_len = 2047
-            optionBit = 0x0
+            opt_ptr = 0x0
             encryption_filler = 0
             parcel = ""
             if(self.encrypt):
@@ -311,7 +310,7 @@ class socket:
                 parcel = buffer[:parcel_len]
                 nonce = nacl.utils.random(Box.NONCE_SIZE)
                 parcel = box.encrypt(parcel, nonce)
-                optionBit = 0x1
+                opt_ptr = 0x1
             else:
                 parcel = buffer[:parcel_len]
             #parcelHeader = self.__make_header(optionBit,0x03,curr,0,parcel_len )
@@ -323,7 +322,6 @@ class socket:
             sequence_no = curr
             ack_no = 0
             payload_len = len(parcel)
-            opt_ptr = 0x0
             pHeader = header1.pack(version, flags, opt_ptr, protocol,
                                        header_len, checksum, source_port, dest_port, sequence_no,
                                        ack_no, window, payload_len)
@@ -331,7 +329,7 @@ class socket:
             tempBytesSent = 0
             ackFlag = -1
             while(ackFlag != curr):
-                tempBytesSent = sock.send(pHeader+parcel) - header_len - encryption_filler
+                tempBytesSent = sock.send(pHeader+parcel) - 40 - encryption_filler
                 newHeader = self.packet()
                 ackFlag = newHeader[9]
             msglen -= parcel_len

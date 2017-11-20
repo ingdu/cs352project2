@@ -297,12 +297,12 @@ class socket:
     def send(self,buffer):
         # your code goes here 
         global sock, header_len, curr, box
-        
+        opt_ptr = 0x0
         bytesSent = 0
         msglen = len(buffer)
         while(msglen > 0):
             parcel_len = 2047
-            optionBit = 0x0
+            opt_ptr = 0x0
             encryption_filler = 0
             parcel = ""
             if(self.encrypt):
@@ -311,7 +311,7 @@ class socket:
                 parcel = buffer[:parcel_len]
                 nonce = nacl.utils.random(Box.NONCE_SIZE)
                 parcel = box.encrypt(parcel, nonce)
-                optionBit = 0x1
+                opt_ptr = 0x1
             else:
                 parcel = buffer[:parcel_len]
             #parcelHeader = self.__make_header(optionBit,0x03,curr,0,parcel_len )
@@ -323,7 +323,6 @@ class socket:
             sequence_no = curr
             ack_no = 0
             payload_len = len(parcel)
-            opt_ptr = 0x0
             pHeader = header1.pack(version, flags, opt_ptr, protocol,
                                        header_len, checksum, source_port, dest_port, sequence_no,
                                        ack_no, window, payload_len)
@@ -331,7 +330,7 @@ class socket:
             tempBytesSent = 0
             ackFlag = -1
             while(ackFlag != curr):
-                tempBytesSent = sock.send(pHeader+parcel) - header_len - encryption_filler
+                tempBytesSent = sock.send(pHeader+parcel) - 40 - encryption_filler
                 newHeader = self.packet()
                 ackFlag = newHeader[9]
             msglen -= parcel_len
@@ -382,7 +381,7 @@ class socket:
 
         # Wait 0.2 seconds to receive a packet, otherwise return an empty header
         try:
-            (data, senderAddress) = sock.recvfrom(4096)
+            (data, dest) = sock.recvfrom(4096)
         except syssock.timeout:
             print("\t\tNo packets received before the timeout!")
             z = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -400,7 +399,7 @@ class socket:
         #    If so, save the address of the sender so the calling function
         #    can make use of it
         if (flag == SOCK352_SYN):
-            address = senderAddress
+            address = dest
             return header
         # if it is a connection tear down (FIN)
         #   send a FIN packet
@@ -419,7 +418,7 @@ class socket:
                                           header_len, checksum, source_port, dest_port, sequence_no,
                                           ack_no, window, payload_len)
             ###############
-            sock.sendto(terminalHeader, senderAddress)
+            sock.sendto(terminalHeader, dest)
             return header
         # else if it is a data packet
         #      save the message in a global variable so the calling
@@ -451,7 +450,7 @@ class socket:
                                   ack_no, window, payload_len)
             #####################
             header = self.__make_header(0x0, 0x08, header[8], header[9], 0)
-            if (sock.sendto(header, senderAddress) > 0):
+            if (sock.sendto(header, dest) > 0):
                 print("\t\tSent a reset packet!")
             else:
                 print("\t\tFailed to send a reset packet!")
