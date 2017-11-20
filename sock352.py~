@@ -382,7 +382,7 @@ class socket:
 
         # Wait 0.2 seconds to receive a packet, otherwise return an empty header
         try:
-            (data, dest) = sock.recvfrom(4096)
+            (data, senderAddress) = sock.recvfrom(4096)
         except syssock.timeout:
             print("\t\tNo packets received before the timeout!")
             z = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -400,7 +400,7 @@ class socket:
         #    If so, save the address of the sender so the calling function
         #    can make use of it
         if (flag == SOCK352_SYN):
-            address = dest
+            address = senderAddress
             return header
         # if it is a connection tear down (FIN)
         #   send a FIN packet
@@ -419,7 +419,7 @@ class socket:
                                           header_len, checksum, source_port, dest_port, sequence_no,
                                           ack_no, window, payload_len)
             ###############
-            sock.sendto(terminalHeader, dest)
+            sock.sendto(terminalHeader, senderAddress)
             return header
         # else if it is a data packet
         #      save the message in a global variable so the calling
@@ -451,7 +451,7 @@ class socket:
                                   ack_no, window, payload_len)
             #####################
             header = self.__make_header(0x0, 0x08, header[8], header[9], 0)
-            if (sock.sendto(header, dest) > 0):
+            if (sock.sendto(header, senderAddress) > 0):
                 print("\t\tSent a reset packet!")
             else:
                 print("\t\tFailed to send a reset packet!")
